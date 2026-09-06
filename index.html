@@ -2,13 +2,14 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <title>Time Stacker</title>
 <style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{background:#F4F5F7;font-family:system-ui,-apple-system,sans-serif;-webkit-tap-highlight-color:transparent}
-  input[type="time"]::-webkit-calendar-picker-indicator{filter:invert(1)}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#F4F5F7;font-family:system-ui,-apple-system,sans-serif;-webkit-tap-highlight-color:transparent}
+input[type="time"]::-webkit-calendar-picker-indicator{filter:invert(1)}
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
@@ -17,413 +18,711 @@
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const{useState,useEffect,useCallback,useRef}=React;
-const ID=()=>Math.random().toString(36).slice(2,10);
-const COLORS=["#4A90D9","#6BBF6A","#E8935A","#B07CC6","#D4A84A","#5BA8A0"];
-const dc=d=>COLORS[d%COLORS.length];
-const toMin=t=>{const[h,m]=t.split(":").map(Number);return h*60+m};
-const toTime=m=>{const v=((m%1440)+1440)%1440;return`${String(Math.floor(v/60)).padStart(2,"0")}:${String(v%60).padStart(2,"0")}`};
-const fmtD=m=>{if(m<60)return`${m}分`;const h=Math.floor(m/60),r=m%60;return r?`${h}h${r}m`:`${h}h`};
-const dur=t=>{if(t.isItem)return 0;if(!t.children?.length)return t.duration||0;const tk=t.children.filter(c=>!c.isItem);return tk.length===0?(t.duration||0):tk.reduce((s,c)=>s+dur(c),0)};
-const allDone=t=>!t.children?.length?!!t.checked:t.children.every(c=>allDone(c));
-const cntDone=t=>!t.children?.length?(t.checked?1:0):t.children.reduce((s,c)=>s+cntDone(c),0);
-const cntAll=t=>!t.children?.length?1:t.children.reduce((s,c)=>s+cntAll(c),0);
-const isDesc=(n,id)=>n.id===id||(n.children||[]).some(c=>isDesc(c,id));
-const flat=(tasks,start,depth=0,anc=[])=>{const out=[];let cur=start;for(const t of tasks){const d=dur(t),htk=t.children?.some(c=>!c.isItem)||false,hik=t.children?.some(c=>c.isItem)||false,grp=htk,colors=t.isItem?[]:[...anc,dc(depth)];out.push({id:t.id,name:t.name,start:cur,end:cur+d,dur:d,depth,grp,col:t.collapsed,chk:t.checked,colors,isItem:!!t.isItem,showT:!t.isItem&&(!grp||t.collapsed),ad:allDone(t),dn:cntDone(t),tt:cntAll(t),hik,hasKids:!!t.children?.length});if(t.children?.length){if(grp&&!t.collapsed)out.push(...flat(t.children,cur,depth+1,colors));else if(!grp&&hik)out.push(...flat(t.children.filter(c=>c.isItem),cur,depth+1,colors))}if(!t.isItem)cur+=d}return out};
-const mapT=(ts,id,fn)=>ts.map(t=>t.id===id?fn(t):t.children?.length?{...t,children:mapT(t.children,id,fn)}:t);
-const delT=(ts,id)=>ts.filter(t=>t.id!==id).map(t=>t.children?.length?{...t,children:delT(t.children,id)}:t);
-const findT=(ts,id)=>{for(const t of ts){if(t.id===id)return t;if(t.children?.length){const r=findT(t.children,id);if(r)return r}}return null};
-const findP=(ts,id,p=null)=>{for(const t of ts){if(t.id===id)return p;if(t.children?.length){const r=findP(t.children,id,t);if(r!==undefined)return r}}};
-const findS=(ts,id)=>{if(ts.some(s=>s.id===id))return ts;for(const t of ts){if(t.children?.length){const r=findS(t.children,id);if(r)return r}}return null};
-const sw=(a,i,j)=>{const c=[...a];[c[i],c[j]]=[c[j],c[i]];return c};
-const rstChk=ts=>ts.map(t=>({...t,checked:false,children:t.children?.length?rstChk(t.children):t.children}));
-const deepCopy=o=>JSON.parse(JSON.stringify(o));
-const todayStr=()=>{const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`};
-const shiftDay=(s,n)=>{const d=new Date(s+"T00:00:00");d.setDate(d.getDate()+n);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`};
-const fmtDateJP=s=>{const d=new Date(s+"T00:00:00");const w=["日","月","火","水","木","金","土"];return`${d.getMonth()+1}/${d.getDate()}(${w[d.getDay()]})`};
-const dayKey=d=>`ts3-day-${d}`;
-const PRE_KEY="ts3-presets";
-const loadLS=(k,fb)=>{try{const r=localStorage.getItem(k);return r?JSON.parse(r):fb}catch{return fb}};
-const saveLS=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}};
-const regenIds=ts=>ts.map(t=>({...t,id:ID(),children:t.children?.length?regenIds(t.children):t.children}));
+const { useState, useEffect, useCallback, useRef } = React;
 
-const SAMPLE=[
-  {id:ID(),name:"朝",collapsed:false,checked:false,children:[
-    {id:ID(),name:"朝食",collapsed:false,checked:false,children:[
-      {id:ID(),name:"準備",duration:20,checked:false,children:[
-        {id:ID(),name:"卵",duration:0,children:[],checked:false,isItem:true},
-        {id:ID(),name:"パン",duration:0,children:[],checked:false,isItem:true},
+/* ===== Utilities ===== */
+const genId = () => Math.random().toString(36).slice(2, 10);
+const DEPTH_COLORS = ["#4A90D9","#6BBF6A","#E8935A","#B07CC6","#D4A84A","#5BA8A0"];
+const depthColor = d => DEPTH_COLORS[d % DEPTH_COLORS.length];
+
+const toMinutes = str => { const [h,m] = str.split(":").map(Number); return h * 60 + m; };
+const toTimeStr = m => { const v = ((m % 1440) + 1440) % 1440; return `${String(Math.floor(v/60)).padStart(2,"0")}:${String(v%60).padStart(2,"0")}`; };
+const formatDuration = m => { if (m < 60) return `${m}分`; const h = Math.floor(m/60), r = m%60; return r ? `${h}h${r}m` : `${h}h`; };
+
+const todayString = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
+const shiftDate = (s, n) => { const d = new Date(s+"T00:00:00"); d.setDate(d.getDate()+n); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; };
+const formatDateJP = s => { const d = new Date(s+"T00:00:00"); return `${d.getMonth()+1}/${d.getDate()}(${"日月火水木金土"[d.getDay()]})`; };
+
+const DAY_KEY = d => `ts3-day-${d}`;
+const PRESET_KEY = "ts3-presets";
+const loadStorage = (k, fallback) => { try { const r = localStorage.getItem(k); return r ? JSON.parse(r) : fallback; } catch { return fallback; } };
+const saveStorage = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} };
+
+const deepCopy = o => JSON.parse(JSON.stringify(o));
+const regenIds = ts => ts.map(t => ({ ...t, id: genId(), children: t.children?.length ? regenIds(t.children) : t.children }));
+const resetChecks = ts => ts.map(t => ({ ...t, checked: false, children: t.children?.length ? resetChecks(t.children) : t.children }));
+const swapArr = (a, i, j) => { const c = [...a]; [c[i],c[j]] = [c[j],c[i]]; return c; };
+
+/* ===== Tree Operations ===== */
+const calcDur = t => {
+  if (t.isItem) return 0;
+  if (!t.children?.length) return t.duration || 0;
+  const taskKids = t.children.filter(c => !c.isItem);
+  return taskKids.length === 0 ? (t.duration || 0) : taskKids.reduce((s,c) => s + calcDur(c), 0);
+};
+
+const isAllDone  = t => !t.children?.length ? !!t.checked : t.children.every(c => isAllDone(c));
+const countDone  = t => !t.children?.length ? (t.checked ? 1 : 0) : t.children.reduce((s,c) => s + countDone(c), 0);
+const countTotal = t => !t.children?.length ? 1 : t.children.reduce((s,c) => s + countTotal(c), 0);
+const isDescOf   = (node, id) => node.id === id || (node.children || []).some(c => isDescOf(c, id));
+
+const mapTree    = (ts, id, fn) => ts.map(t => t.id === id ? fn(t) : t.children?.length ? { ...t, children: mapTree(t.children, id, fn) } : t);
+const deleteFrom = (ts, id) => ts.filter(t => t.id !== id).map(t => t.children?.length ? { ...t, children: deleteFrom(t.children, id) } : t);
+const findInTree = (ts, id) => { for (const t of ts) { if (t.id === id) return t; if (t.children?.length) { const r = findInTree(t.children, id); if (r) return r; } } return null; };
+const findParent = (ts, id, p = null) => { for (const t of ts) { if (t.id === id) return p; if (t.children?.length) { const r = findParent(t.children, id, t); if (r !== undefined) return r; } } };
+const findSiblings = (ts, id) => { if (ts.some(s => s.id === id)) return ts; for (const t of ts) { if (t.children?.length) { const r = findSiblings(t.children, id); if (r) return r; } } return null; };
+
+/* ===== Flatten for Display ===== */
+const flatten = (tasks, startMin, depth = 0, ancestorColors = []) => {
+  const out = [];
+  let cur = startMin;
+  for (const t of tasks) {
+    const d = calcDur(t);
+    const hasTaskKids = t.children?.some(c => !c.isItem) || false;
+    const hasItemKids = t.children?.some(c => c.isItem)  || false;
+    const isGroup = hasTaskKids;
+    const colors = t.isItem ? [] : [...ancestorColors, depthColor(depth)];
+    out.push({
+      id: t.id, name: t.name, start: cur, end: cur + d, dur: d, depth,
+      isGroup, collapsed: t.collapsed, checked: t.checked,
+      colors, isItem: !!t.isItem,
+      showTime: !t.isItem && (!isGroup || t.collapsed),
+      allDone: isAllDone(t), doneCount: countDone(t), totalCount: countTotal(t),
+      hasItemKids, hasKids: !!t.children?.length
+    });
+    if (t.children?.length) {
+      if (isGroup && !t.collapsed) out.push(...flatten(t.children, cur, depth + 1, colors));
+      else if (!isGroup && hasItemKids) out.push(...flatten(t.children.filter(c => c.isItem), cur, depth + 1, colors));
+    }
+    if (!t.isItem) cur += d;
+  }
+  return out;
+};
+
+/* ===== Sample Data ===== */
+const SAMPLE = [
+  { id: genId(), name: "朝", collapsed: false, checked: false, children: [
+    { id: genId(), name: "朝食", collapsed: false, checked: false, children: [
+      { id: genId(), name: "準備", duration: 20, checked: false, children: [
+        { id: genId(), name: "卵", duration: 0, children: [], checked: false, isItem: true },
+        { id: genId(), name: "パン", duration: 0, children: [], checked: false, isItem: true },
       ]},
-      {id:ID(),name:"食事",duration:30,children:[],checked:false},
-      {id:ID(),name:"片付け",duration:10,children:[],checked:false},
+      { id: genId(), name: "食事", duration: 30, children: [], checked: false },
+      { id: genId(), name: "片付け", duration: 10, children: [], checked: false },
     ]},
-    {id:ID(),name:"身支度",duration:30,children:[],checked:false},
+    { id: genId(), name: "身支度", duration: 30, children: [], checked: false },
   ]},
-  {id:ID(),name:"家事",duration:60,children:[],checked:false},
-  {id:ID(),name:"筋トレ",duration:120,children:[],checked:false},
+  { id: genId(), name: "家事", duration: 60, children: [], checked: false },
+  { id: genId(), name: "筋トレ", duration: 120, children: [], checked: false },
 ];
 
-function App(){
-  const[tasks,setTasks]=useState([]);
-  const[st,setSt]=useState("07:00");
-  const[aDate,setADate]=useState(todayStr);
-  const[editing,setEditing]=useState(null);
-  const[eName,setEName]=useState("");
-  const[eDur,setEDur]=useState("");
-  const[mode,setMode]=useState("view");
-  const[loaded,setLoaded]=useState(false);
-  const[addTgt,setAddTgt]=useState(null);
-  const[nName,setNName]=useState("");
-  const[nDur,setNDur]=useState("30");
-  const[nIsItem,setNIsItem]=useState(false);
-  const[swiped,setSwiped]=useState(null);
-  const[hist,setHist]=useState([]);
-  const[futr,setFutr]=useState([]);
-  const[movId,setMovId]=useState(null);
-  const[now,setNow]=useState(new Date());
-  const[presets,setPresets]=useState([]);
-  const[showPre,setShowPre]=useState("none");
-  const[preName,setPreName]=useState("");
-  const[preEdit,setPreEdit]=useState(false);
-  const[preEditName,setPreEditName]=useState("");
-  const[savedDay,setSavedDay]=useState(null);
-  const[newPreName,setNewPreName]=useState("");
-  const[pendPre,setPendPre]=useState(null);
-  const tRef=useRef({});
+/* ===== Main App ===== */
+function App() {
+  // Core state
+  const [tasks, setTasks]       = useState([]);
+  const [startTime, setStartTime] = useState("07:00");
+  const [activeDate, setActiveDate] = useState(todayString);
+  const [mode, setMode]         = useState("view"); // "view" | "edit"
+  const [loaded, setLoaded]     = useState(false);
 
-  useEffect(()=>{
-    const today=todayStr();
-    const data=loadLS(dayKey(today),null);
-    if(data){setTasks(regenIds(data.tasks||[]));setSt(data.st||"07:00")}
-    else setTasks(SAMPLE);
-    setPresets(loadLS(PRE_KEY,[]));
-    setLoaded(true);
-  },[]);
+  // Edit state
+  const [editing, setEditing]   = useState(null);
+  const [editName, setEditName] = useState("");
+  const [editDur, setEditDur]   = useState("");
+  const [addTarget, setAddTarget] = useState(null);
+  const [newName, setNewName]   = useState("");
+  const [newDur, setNewDur]     = useState("30");
+  const [newIsItem, setNewIsItem] = useState(false);
 
-  useEffect(()=>{
-    const t=setInterval(()=>setNow(new Date()),30000);
-    return()=>clearInterval(t);
-  },[]);
+  // Swipe / Move / History
+  const [swiped, setSwiped]     = useState(null);
+  const [movingId, setMovingId] = useState(null);
+  const [history, setHistory]   = useState([]);
+  const [future, setFuture]     = useState([]);
+  const touchRef = useRef({});
 
-  const preEditRef=useRef(false);
-  useEffect(()=>{preEditRef.current=preEdit},[preEdit]);
-  const save=useCallback((t,s)=>{if(!preEditRef.current)saveLS(dayKey(aDate),{tasks:t,st:s})},[aDate]);
-
-  const resetUI=()=>{setEditing(null);setAddTgt(null);setSwiped(null);setMovId(null);setNIsItem(false);setShowPre("none");setHist([]);setFutr([]);setPendPre(null)};
-
-  const goDay=(nd)=>{
-    saveLS(dayKey(aDate),{tasks,st});
-    const data=loadLS(dayKey(nd),null);
-    if(data){setTasks(regenIds(data.tasks||[]));setSt(data.st||"07:00")}
-    else{setTasks([]);setSt("07:00")}
-    setADate(nd);resetUI();
-  };
-
-  const startPreEdit=(name)=>{
-    setSavedDay({tasks:deepCopy(tasks),st,date:aDate});
-    setTasks([]);setSt("07:00");
-    setPreEdit(true);setPreEditName(name);
-    setShowPre("none");setMode("edit");resetUI();
-  };
-  const savePreEdit=()=>{
-    if(tasks.length>0){const np=[...presets,{id:ID(),name:preEditName,tasks:deepCopy(tasks),st}];setPresets(np);saveLS(PRE_KEY,np)}
-    if(savedDay){setTasks(savedDay.tasks);setSt(savedDay.st);saveLS(dayKey(savedDay.date),{tasks:savedDay.tasks,st:savedDay.st})}
-    setPreEdit(false);setMode("view");resetUI();setSavedDay(null);
-  };
-  const cancelPreEdit=()=>{
-    if(savedDay){setTasks(savedDay.tasks);setSt(savedDay.st)}
-    setPreEdit(false);setMode("view");resetUI();setSavedDay(null);
-  };
-
-  const up=(t,s)=>{setHist(h=>[...h.slice(-29),{tasks,st}]);setFutr([]);setTasks(t);if(s!==undefined)setSt(s);save(t,s!==undefined?s:st)};
-  const undo=()=>{if(!hist.length)return;const p=hist[hist.length-1];setFutr(f=>[...f,{tasks,st}]);setHist(h=>h.slice(0,-1));setTasks(p.tasks);setSt(p.st);save(p.tasks,p.st)};
-  const redo=()=>{if(!futr.length)return;const n=futr[futr.length-1];setHist(h=>[...h,{tasks,st}]);setFutr(f=>f.slice(0,-1));setTasks(n.tasks);setSt(n.st);save(n.tasks,n.st)};
-
-  const toggle=id=>{const t=findT(tasks,id);if(!t)return;const htk=t.children?.some(c=>!c.isItem)||false;if(t.isItem||!t.children?.length||!htk)up(mapT(tasks,id,x=>({...x,checked:!x.checked})))};
-  const onTS=(e,id)=>{tRef.current={x:e.touches[0].clientX,y:e.touches[0].clientY,id,sw:false}};
-  const onTM=(e,id)=>{if(tRef.current.id!==id)return;const dx=tRef.current.x-e.touches[0].clientX,dy=Math.abs(tRef.current.y-e.touches[0].clientY);if(dy>30&&!tRef.current.sw){tRef.current.id=null;return}if(dx>50){setSwiped(id);tRef.current.sw=true}else if(dx<-20&&tRef.current.sw)setSwiped(null)};
-  const addChild=pid=>{if(!nName.trim())return;const nd={id:ID(),name:nName.trim(),duration:nIsItem?0:(parseInt(nDur)||30),children:[],checked:false,isItem:nIsItem};if(!pid)up([...tasks,nd]);else up(mapT(tasks,pid,t=>({...t,children:[...(t.children||[]),nd],collapsed:false})));setNName("");setNDur("30");setAddTgt(null);setNIsItem(false)};
-  const del=id=>{up(delT(tasks,id));setSwiped(null)};
-  const startEd=id=>{const t=findT(tasks,id);if(!t)return;setEditing(id);setEName(t.name);setEDur(String(t.isItem?"":(t.children?.some(c=>!c.isItem)?"":(t.duration||0))))};
-  const saveEd=()=>{if(!editing)return;up(mapT(tasks,editing,t=>({...t,name:eName||t.name,...(t.isItem||t.children?.some(c=>!c.isItem)?{}:{duration:parseInt(eDur)||t.duration})})));setEditing(null)};
-  const mv=(id,dir)=>{const sibs=findS(tasks,id);if(!sibs)return;const i=sibs.findIndex(t=>t.id===id),j=i+dir;if(j<0||j>=sibs.length)return;const p=findP(tasks,id);if(!p)up(sw(tasks,i,j));else up(mapT(tasks,p.id,t=>({...t,children:sw(t.children,i,j)})))};
-  const moveToTarget=tid=>{if(!movId)return;const task=findT(tasks,movId);if(!task)return;if(tid!==null&&(tid===movId||isDesc(task,tid)))return;const rem=delT(tasks,movId);up(tid===null?[...rem,{...task}]:mapT(rem,tid,t=>({...t,children:[...(t.children||[]),{...task}],collapsed:false})));setMovId(null)};
-  const togCol=id=>up(mapT(tasks,id,t=>({...t,collapsed:!t.collapsed})));
-
-  const resync=()=>{
-    const n=new Date();const nowM=n.getHours()*60+n.getMinutes();
-    const fi=items.find(it=>!it.isItem&&!it.grp&&!it.ad&&!it.chk);
-    if(!fi)return;
-    const newSt=toTime(toMin(st)+(nowM-fi.start));
-    up(tasks,newSt);
-  };
+  // Clock
+  const [now, setNow] = useState(new Date());
 
   // Presets
-  const savePre=()=>{if(!preName.trim())return;const np=[...presets,{id:ID(),name:preName.trim(),tasks:deepCopy(tasks),st}];setPresets(np);saveLS(PRE_KEY,np);setPreName("")};
-  const loadPre=p=>{setPendPre(p);setShowPre("none")};
-  const placePre=tid=>{
-    if(!pendPre)return;
-    const ct=regenIds(rstChk(deepCopy(pendPre.tasks)));
-    if(tid===null)up([...tasks,...ct]);
-    else up(mapT(tasks,tid,t=>({...t,children:[...(t.children||[]),...ct],collapsed:false})));
-    setPendPre(null);
+  const [presets, setPresets]       = useState([]);
+  const [showPresets, setShowPresets] = useState(false);
+  const [presetSaveName, setPresetSaveName] = useState("");
+  const [presetNewName, setPresetNewName]   = useState("");
+  const [pendingPreset, setPendingPreset]   = useState(null);
+
+  // Preset edit mode
+  const [presetEditing, setPresetEditing]     = useState(false);
+  const [presetEditName, setPresetEditName]   = useState("");
+  const [savedDayData, setSavedDayData]       = useState(null);
+
+  // Ref to track presetEditing in save callback
+  const presetEditRef = useRef(false);
+  useEffect(() => { presetEditRef.current = presetEditing; }, [presetEditing]);
+
+  /* --- Init --- */
+  useEffect(() => {
+    const today = todayString();
+    const data = loadStorage(DAY_KEY(today), null);
+    if (data) { setTasks(regenIds(data.tasks || [])); setStartTime(data.st || "07:00"); }
+    else setTasks(SAMPLE);
+    setPresets(loadStorage(PRESET_KEY, []));
+    setLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 30000);
+    return () => clearInterval(timer);
+  }, []);
+
+  /* --- Save (skips during preset editing) --- */
+  const save = useCallback((t, s) => {
+    if (!presetEditRef.current) saveStorage(DAY_KEY(activeDate), { tasks: t, st: s });
+  }, [activeDate]);
+
+  /* --- State helpers --- */
+  const resetUI = () => {
+    setEditing(null); setAddTarget(null); setSwiped(null);
+    setMovingId(null); setNewIsItem(false); setShowPresets(false);
+    setHistory([]); setFuture([]); setPendingPreset(null);
   };
-  const delPre=id=>{const np=presets.filter(p=>p.id!==id);setPresets(np);saveLS(PRE_KEY,np)};
 
-  const items=flat(tasks,toMin(st));
-  const total=tasks.reduce((s,t)=>s+dur(t),0);
-  const movTask=movId?findT(tasks,movId):null;
-  const isMovable=id=>movId&&id!==movId&&findT(tasks,movId)&&!isDesc(findT(tasks,movId),id);
-  const isToday=aDate===todayStr();
-  const nowMin=now.getHours()*60+now.getMinutes();
-  const nowTime=`${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
-
-  const addForm=(pid,pd)=>{
-    const color=dc((pd||0)+1);const pt=pid&&pid!=="__root__"?findT(tasks,pid):null;
-    return(<div style={{padding:10,background:"#fff",borderRadius:6,border:pid==="__root__"?"none":`1.5px dashed ${color}`,...(pid==="__root__"?{boxShadow:"0 4px 16px rgba(0,0,0,0.15)",width:"calc(100% - 32px)",maxWidth:340}:{margin:"3px 0 3px 16px"})}}>
-      {pt&&<div style={{fontSize:11,color,fontWeight:600,marginBottom:5}}>「{pt.name}」に追加</div>}
-      {pid==="__root__"&&<div style={{fontSize:12,fontWeight:600,color:"#2C3E50",marginBottom:6}}>ルート追加</div>}
-      <div style={{display:"flex",gap:0,marginBottom:8,borderRadius:6,overflow:"hidden",border:"1px solid #ddd"}}>
-        <button onClick={()=>setNIsItem(false)} style={{flex:1,padding:"5px 0",fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:!nIsItem?"#2C3E50":"#f5f5f5",color:!nIsItem?"#fff":"#888"}}>タスク</button>
-        <button onClick={()=>setNIsItem(true)} style={{flex:1,padding:"5px 0",fontSize:12,fontWeight:600,border:"none",cursor:"pointer",background:nIsItem?"#2C3E50":"#f5f5f5",color:nIsItem?"#fff":"#888"}}>アイテム</button>
-      </div>
-      <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-        <input value={nName} onChange={e=>setNName(e.target.value)} placeholder={nIsItem?"アイテム名":"タスク名"} autoFocus style={{...inpS,flex:1,minWidth:80}}/>
-        {!nIsItem&&<div style={{display:"flex",alignItems:"center",gap:3}}>
-          <input value={nDur} onChange={e=>setNDur(e.target.value)} type="number" min="1" style={{...inpS,width:50}}/>
-          <span style={{fontSize:11,color:"#888"}}>分</span></div>}
-      </div>
-      <div style={{display:"flex",gap:5,marginTop:6}}>
-        <button onClick={()=>addChild(pid==="__root__"?null:pid)} style={{...savBtn,...(pid!=="__root__"?{background:color}:{})}}>追加</button>
-        <button onClick={()=>{setAddTgt(null);setNIsItem(false)}} style={canBtn}>取消</button>
-      </div>
-    </div>);
+  const commit = (t, s) => {
+    setHistory(h => [...h.slice(-29), { tasks, startTime }]);
+    setFuture([]);
+    setTasks(t);
+    if (s !== undefined) setStartTime(s);
+    save(t, s !== undefined ? s : startTime);
   };
 
-  if(!loaded)return<div style={loadS}>読み込み中...</div>;
+  const undo = () => {
+    if (!history.length) return;
+    const prev = history[history.length - 1];
+    setFuture(f => [...f, { tasks, startTime }]);
+    setHistory(h => h.slice(0, -1));
+    setTasks(prev.tasks); setStartTime(prev.startTime);
+    save(prev.tasks, prev.startTime);
+  };
 
-  return(
-    <div style={{fontFamily:"system-ui,-apple-system,sans-serif",background:"#F4F5F7",minHeight:"100vh",color:"#1a1a2e",WebkitTapHighlightColor:"transparent"}}>
-      {/* Header */}
-      <div style={{background:preEdit?"linear-gradient(135deg,#5B3A8C 0%,#7B4FB0 100%)":"linear-gradient(135deg,#2C3E50 0%,#34495E 100%)",color:"#fff",padding:"12px 16px",position:"sticky",top:0,zIndex:10}}>
-        {preEdit?(
+  const redo = () => {
+    if (!future.length) return;
+    const next = future[future.length - 1];
+    setHistory(h => [...h, { tasks, startTime }]);
+    setFuture(f => f.slice(0, -1));
+    setTasks(next.tasks); setStartTime(next.startTime);
+    save(next.tasks, next.startTime);
+  };
+
+  /* --- Date navigation --- */
+  const goToDate = nd => {
+    saveStorage(DAY_KEY(activeDate), { tasks, st: startTime });
+    const data = loadStorage(DAY_KEY(nd), null);
+    if (data) { setTasks(regenIds(data.tasks || [])); setStartTime(data.st || "07:00"); }
+    else { setTasks([]); setStartTime("07:00"); }
+    setActiveDate(nd); resetUI();
+  };
+
+  /* --- Preset editing --- */
+  const beginPresetEdit = name => {
+    setSavedDayData({ tasks: deepCopy(tasks), st: startTime, date: activeDate });
+    setTasks([]); setStartTime("07:00");
+    setPresetEditing(true); setPresetEditName(name);
+    setShowPresets(false); setMode("edit"); resetUI();
+  };
+
+  const finishPresetEdit = () => {
+    if (tasks.length > 0) {
+      const np = [...presets, { id: genId(), name: presetEditName, tasks: deepCopy(tasks), st: startTime }];
+      setPresets(np); saveStorage(PRESET_KEY, np);
+    }
+    if (savedDayData) {
+      setTasks(savedDayData.tasks); setStartTime(savedDayData.st);
+      saveStorage(DAY_KEY(savedDayData.date), { tasks: savedDayData.tasks, st: savedDayData.st });
+    }
+    setPresetEditing(false); setMode("view"); resetUI(); setSavedDayData(null);
+  };
+
+  const cancelPresetEdit = () => {
+    if (savedDayData) { setTasks(savedDayData.tasks); setStartTime(savedDayData.st); }
+    setPresetEditing(false); setMode("view"); resetUI(); setSavedDayData(null);
+  };
+
+  /* --- Task operations --- */
+  const toggleCheck = id => {
+    const t = findInTree(tasks, id);
+    if (!t) return;
+    const hasTaskKids = t.children?.some(c => !c.isItem) || false;
+    if (t.isItem || !t.children?.length || !hasTaskKids)
+      commit(mapTree(tasks, id, x => ({ ...x, checked: !x.checked })));
+  };
+
+  const addChild = pid => {
+    if (!newName.trim()) return;
+    const node = { id: genId(), name: newName.trim(), duration: newIsItem ? 0 : (parseInt(newDur) || 30), children: [], checked: false, isItem: newIsItem };
+    if (!pid) commit([...tasks, node]);
+    else commit(mapTree(tasks, pid, t => ({ ...t, children: [...(t.children || []), node], collapsed: false })));
+    setNewName(""); setNewDur("30"); setAddTarget(null); setNewIsItem(false);
+  };
+
+  const deleteTask = id => { commit(deleteFrom(tasks, id)); setSwiped(null); };
+
+  const beginEdit = id => {
+    const t = findInTree(tasks, id);
+    if (!t) return;
+    setEditing(id); setEditName(t.name);
+    const hasTaskKids = t.children?.some(c => !c.isItem) || false;
+    setEditDur(String(t.isItem || hasTaskKids ? "" : (t.duration || 0)));
+  };
+
+  const saveEdit = () => {
+    if (!editing) return;
+    commit(mapTree(tasks, editing, t => ({
+      ...t, name: editName || t.name,
+      ...(t.isItem || t.children?.some(c => !c.isItem) ? {} : { duration: parseInt(editDur) || t.duration })
+    })));
+    setEditing(null);
+  };
+
+  const moveInList = (id, dir) => {
+    const sibs = findSiblings(tasks, id);
+    if (!sibs) return;
+    const i = sibs.findIndex(t => t.id === id), j = i + dir;
+    if (j < 0 || j >= sibs.length) return;
+    const p = findParent(tasks, id);
+    if (!p) commit(swapArr(tasks, i, j));
+    else commit(mapTree(tasks, p.id, t => ({ ...t, children: swapArr(t.children, i, j) })));
+  };
+
+  const moveToTarget = tid => {
+    if (!movingId) return;
+    const task = findInTree(tasks, movingId);
+    if (!task) return;
+    if (tid !== null && (tid === movingId || isDescOf(task, tid))) return;
+    const removed = deleteFrom(tasks, movingId);
+    commit(tid === null
+      ? [...removed, { ...task }]
+      : mapTree(removed, tid, t => ({ ...t, children: [...(t.children || []), { ...task }], collapsed: false }))
+    );
+    setMovingId(null);
+  };
+
+  const toggleCollapse = id => commit(mapTree(tasks, id, t => ({ ...t, collapsed: !t.collapsed })));
+
+  const resyncNow = () => {
+    const n = new Date();
+    const nowM = n.getHours() * 60 + n.getMinutes();
+    const first = flatItems.find(it => !it.isItem && !it.isGroup && !it.allDone && !it.checked);
+    if (!first) return;
+    commit(tasks, toTimeStr(toMinutes(startTime) + (nowM - first.start)));
+  };
+
+  /* --- Preset operations --- */
+  const savePreset = () => {
+    if (!presetSaveName.trim()) return;
+    const np = [...presets, { id: genId(), name: presetSaveName.trim(), tasks: deepCopy(tasks), st: startTime }];
+    setPresets(np); saveStorage(PRESET_KEY, np); setPresetSaveName("");
+  };
+
+  const startLoadPreset = p => { setPendingPreset(p); setShowPresets(false); };
+
+  const placePreset = tid => {
+    if (!pendingPreset) return;
+    const ct = regenIds(resetChecks(deepCopy(pendingPreset.tasks)));
+    if (tid === null) commit([...tasks, ...ct]);
+    else commit(mapTree(tasks, tid, t => ({ ...t, children: [...(t.children || []), ...ct], collapsed: false })));
+    setPendingPreset(null);
+  };
+
+  const deletePreset = id => {
+    const np = presets.filter(p => p.id !== id);
+    setPresets(np); saveStorage(PRESET_KEY, np);
+  };
+
+  /* --- Swipe handlers --- */
+  const onTouchStart = (e, id) => {
+    touchRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, id, swiping: false };
+  };
+  const onTouchMove = (e, id) => {
+    if (touchRef.current.id !== id) return;
+    const dx = touchRef.current.x - e.touches[0].clientX;
+    const dy = Math.abs(touchRef.current.y - e.touches[0].clientY);
+    if (dy > 30 && !touchRef.current.swiping) { touchRef.current.id = null; return; }
+    if (dx > 50) { setSwiped(id); touchRef.current.swiping = true; }
+    else if (dx < -20 && touchRef.current.swiping) setSwiped(null);
+  };
+
+  /* --- Computed values --- */
+  const flatItems = flatten(tasks, toMinutes(startTime));
+  const totalDur = tasks.reduce((s, t) => s + calcDur(t), 0);
+  const movingTask = movingId ? findInTree(tasks, movingId) : null;
+  const canMoveTo = id => movingId && id !== movingId && findInTree(tasks, movingId) && !isDescOf(findInTree(tasks, movingId), id);
+  const isToday = activeDate === todayString();
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const nowTimeStr = `${String(now.getHours()).padStart(2,"0")}:${String(now.getMinutes()).padStart(2,"0")}`;
+  const hasAction = !!movingId || !!pendingPreset;
+  const actionLabel = movingId ? `「${movingTask?.name}」を移動中` : pendingPreset ? `「${pendingPreset.name}」の配置先を選択` : "";
+  const actionColor = movingId ? "#2C3E50" : "#5B3A8C";
+
+  /* --- Export / Import --- */
+  const [importText, setImportText] = useState("");
+  const [showImport, setShowImport] = useState(false);
+  const [showExport, setShowExport] = useState(false);
+  const [exportMsg, setExportMsg] = useState("");
+  const [exportText, setExportText] = useState("");
+  const exportAreaRef = useRef(null);
+
+  const exportData = () => {
+    saveStorage(DAY_KEY(activeDate), { tasks, st: startTime });
+    const allData = { presets };
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k.startsWith("ts3-day-")) allData[k] = loadStorage(k, null);
+    }
+    const json = JSON.stringify(allData);
+    setExportText(json);
+    setShowExport(true);
+    setShowImport(false);
+    setTimeout(() => {
+      if (exportAreaRef.current) {
+        exportAreaRef.current.select();
+        exportAreaRef.current.setSelectionRange(0, 99999);
+      }
+    }, 100);
+  };
+
+  const importData = () => {
+    try {
+      const data = JSON.parse(importText);
+      if (data.presets) { setPresets(data.presets); saveStorage(PRESET_KEY, data.presets); }
+      for (const [k, v] of Object.entries(data)) {
+        if (k.startsWith("ts3-day-")) saveStorage(k, v);
+      }
+      const today = loadStorage(DAY_KEY(activeDate), null);
+      if (today) { setTasks(regenIds(today.tasks || [])); setStartTime(today.st || "07:00"); }
+      setImportText(""); setShowImport(false); setExportMsg("復元しました");
+      setTimeout(() => setExportMsg(""), 2000);
+    } catch {
+      setExportMsg("データ形式が不正です");
+      setTimeout(() => setExportMsg(""), 2000);
+    }
+  };
+
+  /* --- Add form component --- */
+  const renderAddForm = (pid, parentDepth) => {
+    const color = depthColor((parentDepth || 0) + 1);
+    const parent = pid && pid !== "__root__" ? findInTree(tasks, pid) : null;
+    const isRoot = pid === "__root__";
+    return (
+      <div style={{ padding: 10, background: "#fff", borderRadius: 6,
+        border: isRoot ? "none" : `1.5px dashed ${color}`,
+        ...(isRoot ? { boxShadow: "0 4px 16px rgba(0,0,0,0.15)", width: "calc(100% - 32px)", maxWidth: 340 } : { margin: "3px 0 3px 16px" }) }}>
+        {parent && <div style={{ fontSize: 11, color, fontWeight: 600, marginBottom: 5 }}>「{parent.name}」に追加</div>}
+        {isRoot && <div style={{ fontSize: 12, fontWeight: 600, color: "#2C3E50", marginBottom: 6 }}>ルート追加</div>}
+        <div style={{ display: "flex", gap: 0, marginBottom: 8, borderRadius: 6, overflow: "hidden", border: "1px solid #ddd" }}>
+          <button onClick={() => setNewIsItem(false)} style={{ flex: 1, padding: "5px 0", fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer", background: !newIsItem ? "#2C3E50" : "#f5f5f5", color: !newIsItem ? "#fff" : "#888" }}>タスク</button>
+          <button onClick={() => setNewIsItem(true)} style={{ flex: 1, padding: "5px 0", fontSize: 12, fontWeight: 600, border: "none", cursor: "pointer", background: newIsItem ? "#2C3E50" : "#f5f5f5", color: newIsItem ? "#fff" : "#888" }}>アイテム</button>
+        </div>
+        <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+          <input value={newName} onChange={e => setNewName(e.target.value)} placeholder={newIsItem ? "アイテム名" : "タスク名"} autoFocus style={{ ...S.input, flex: 1, minWidth: 80 }} />
+          {!newIsItem && <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+            <input value={newDur} onChange={e => setNewDur(e.target.value)} type="number" min="1" style={{ ...S.input, width: 50 }} />
+            <span style={{ fontSize: 11, color: "#888" }}>分</span>
+          </div>}
+        </div>
+        <div style={{ display: "flex", gap: 5, marginTop: 6 }}>
+          <button onClick={() => addChild(isRoot ? null : pid)} style={{ ...S.saveBtn, ...(isRoot ? {} : { background: color }) }}>追加</button>
+          <button onClick={() => { setAddTarget(null); setNewIsItem(false); }} style={S.cancelBtn}>取消</button>
+        </div>
+      </div>
+    );
+  };
+
+  if (!loaded) return <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100vh", color: "#4A90D9" }}>読み込み中...</div>;
+
+  /* ===== RENDER ===== */
+  return (
+    <div style={{ fontFamily: "system-ui,-apple-system,sans-serif", background: "#F4F5F7", minHeight: "100vh", color: "#1a1a2e", WebkitTapHighlightColor: "transparent" }}>
+
+      {/* ===== Header ===== */}
+      <div style={{ background: presetEditing ? "linear-gradient(135deg,#5B3A8C,#7B4FB0)" : "linear-gradient(135deg,#2C3E50,#34495E)", color: "#fff", padding: "12px 16px", position: "sticky", top: 0, zIndex: 10 }}>
+        {presetEditing ? (
           <div>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div>
-                <div style={{fontSize:10,opacity:0.6}}>プリセット編集中</div>
-                <div style={{fontSize:16,fontWeight:700}}>{preEditName}</div>
-              </div>
-              <div style={{display:"flex",gap:5}}>
-                <button onClick={savePreEdit} style={{...hdrBtn,background:"#E8C547",color:"#1a1a2e"}}>保存して戻る</button>
-                <button onClick={cancelPreEdit} style={hdrBtn}>破棄</button>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div><div style={{ fontSize: 10, opacity: 0.6 }}>プリセット編集中</div><div style={{ fontSize: 16, fontWeight: 700 }}>{presetEditName}</div></div>
+              <div style={{ display: "flex", gap: 5 }}>
+                <button onClick={finishPresetEdit} style={{ ...S.headerBtn, background: "#E8C547", color: "#1a1a2e" }}>保存して戻る</button>
+                <button onClick={cancelPresetEdit} style={S.headerBtn}>破棄</button>
               </div>
             </div>
-            <div style={{display:"flex",alignItems:"center",gap:10,marginTop:8}}>
-              <span style={{fontSize:12,opacity:0.65}}>起点</span>
-              <input type="time" value={st} onChange={e=>setSt(e.target.value)}
-                style={{background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:7,padding:"6px 10px",color:"#fff",fontSize:18,fontWeight:700,fontVariantNumeric:"tabular-nums",outline:"none"}}/>
-              <div style={{marginLeft:"auto",display:"flex",gap:4}}>
-                <button onClick={undo} disabled={!hist.length} style={{...urBtn,opacity:hist.length?1:0.3}}>↩</button>
-                <button onClick={redo} disabled={!futr.length} style={{...urBtn,opacity:futr.length?1:0.3}}>↪</button>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+              <span style={{ fontSize: 12, opacity: 0.65 }}>起点</span>
+              <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} style={S.timeInput} />
+              <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+                <button onClick={undo} disabled={!history.length} style={{ ...S.undoBtn, opacity: history.length ? 1 : 0.3 }}>↩</button>
+                <button onClick={redo} disabled={!future.length} style={{ ...S.undoBtn, opacity: future.length ? 1 : 0.3 }}>↪</button>
               </div>
             </div>
           </div>
-        ):(
+        ) : (
           <div>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <button onClick={()=>goDay(shiftDay(aDate,-1))} style={navBtn}>◀</button>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <button onClick={() => goToDate(shiftDate(activeDate, -1))} style={S.navBtn}>◀</button>
                 <div>
-                  <div style={{fontSize:15,fontWeight:700}}>{fmtDateJP(aDate)}{isToday&&<span style={{fontSize:10,opacity:0.6,marginLeft:4}}>今日</span>}</div>
-                  <div style={{fontSize:10,opacity:0.5}}>{fmtD(total)} → {toTime(toMin(st)+total)}終了</div>
+                  <div style={{ fontSize: 15, fontWeight: 700 }}>{formatDateJP(activeDate)}{isToday && <span style={{ fontSize: 10, opacity: 0.6, marginLeft: 4 }}>今日</span>}</div>
+                  <div style={{ fontSize: 10, opacity: 0.5 }}>{formatDuration(totalDur)} → {toTimeStr(toMinutes(startTime) + totalDur)}終了</div>
                 </div>
-                <button onClick={()=>goDay(shiftDay(aDate,1))} style={navBtn}>▶</button>
-                {!isToday&&<button onClick={()=>goDay(todayStr())} style={{...navBtn,fontSize:10,padding:"3px 6px"}}>今日</button>}
+                <button onClick={() => goToDate(shiftDate(activeDate, 1))} style={S.navBtn}>▶</button>
+                {!isToday && <button onClick={() => goToDate(todayString())} style={{ ...S.navBtn, fontSize: 10, padding: "3px 6px" }}>今日</button>}
               </div>
-              <div style={{display:"flex",gap:5,alignItems:"center"}}>
-                {isToday&&<span style={{fontSize:18,fontWeight:700,fontVariantNumeric:"tabular-nums",opacity:0.9}}>{nowTime}</span>}
-                {mode==="view"&&<button onClick={()=>up(rstChk(tasks))} style={hdrBtn}>リセット</button>}
-                <button onClick={()=>{setMode(mode==="view"?"edit":"view");resetUI()}}
-                  style={{...hdrBtn,...(mode==="edit"?{background:"#E8C547",color:"#1a1a2e"}:{})}}>
-                  {mode==="edit"?"完了":"編集"}</button>
+              <div style={{ display: "flex", gap: 5, alignItems: "center" }}>
+                {isToday && <span style={{ fontSize: 18, fontWeight: 700, fontVariantNumeric: "tabular-nums", opacity: 0.9 }}>{nowTimeStr}</span>}
+                {mode === "view" && <button onClick={() => commit(resetChecks(tasks))} style={S.headerBtn}>リセット</button>}
+                <button onClick={() => { setMode(mode === "view" ? "edit" : "view"); resetUI(); }}
+                  style={{ ...S.headerBtn, ...(mode === "edit" ? { background: "#E8C547", color: "#1a1a2e" } : {}) }}>
+                  {mode === "edit" ? "完了" : "編集"}</button>
               </div>
             </div>
-            <div style={{display:"flex",alignItems:"center",gap:10,marginTop:8}}>
-              <span style={{fontSize:12,opacity:0.65}}>起点</span>
-              <input type="time" value={st} onChange={e=>{setSt(e.target.value);save(tasks,e.target.value)}}
-                style={{background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:7,padding:"6px 10px",color:"#fff",fontSize:18,fontWeight:700,fontVariantNumeric:"tabular-nums",outline:"none"}}/>
-              {isToday&&<button onClick={resync} style={{background:"rgba(255,255,255,0.12)",color:"#E8C547",border:"1px solid rgba(232,197,71,0.3)",borderRadius:7,padding:"5px 10px",fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>⏱ 今から</button>}
-              <div style={{marginLeft:"auto",display:"flex",gap:4}}>
-                <button onClick={undo} disabled={!hist.length} style={{...urBtn,opacity:hist.length?1:0.3}}>↩</button>
-                <button onClick={redo} disabled={!futr.length} style={{...urBtn,opacity:futr.length?1:0.3}}>↪</button>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}>
+              <span style={{ fontSize: 12, opacity: 0.65 }}>起点</span>
+              <input type="time" value={startTime} onChange={e => { setStartTime(e.target.value); save(tasks, e.target.value); }} style={S.timeInput} />
+              {isToday && mode === "view" && <button onClick={resyncNow} style={{ ...S.headerBtn, fontSize: 11, padding: "5px 10px" }}>⏱ 今から</button>}
+              <div style={{ marginLeft: "auto", display: "flex", gap: 4 }}>
+                <button onClick={undo} disabled={!history.length} style={{ ...S.undoBtn, opacity: history.length ? 1 : 0.3 }}>↩</button>
+                <button onClick={redo} disabled={!future.length} style={{ ...S.undoBtn, opacity: future.length ? 1 : 0.3 }}>↪</button>
               </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* Preset bar */}
-      {!preEdit&&<div>
-        <div style={{display:"flex",gap:6,padding:"6px 8px",alignItems:"center"}}>
-          <button onClick={()=>setShowPre(showPre==="none"?"load":"none")} style={{...preBtn,...(showPre!=="none"?{background:"#2C3E50",color:"#fff",borderColor:"#2C3E50"}:{})}}>📂 プリセット</button>
+      {/* ===== Preset Panel ===== */}
+      {!presetEditing && <div>
+        <div style={{ display: "flex", gap: 6, padding: "6px 8px" }}>
+          <button onClick={() => setShowPresets(!showPresets)} style={{ ...S.presetBtn, ...(showPresets ? { background: "#2C3E50", color: "#fff", borderColor: "#2C3E50" } : {}) }}>📂 プリセット</button>
         </div>
-        {showPre!=="none"&&(
-          <div style={{margin:"0 8px 6px",background:"#fff",borderRadius:8,border:"1px solid #e0e0e0",overflow:"hidden"}}>
-            {presets.map(p=>(
-              <div key={p.id} style={{display:"flex",alignItems:"center",padding:"8px 12px",borderBottom:"1px solid #f0f0f0"}}>
-                <span style={{flex:1,fontSize:14}}>{p.name}</span>
-                <button onClick={()=>loadPre(p)} style={{...savBtn,padding:"4px 10px",marginRight:4,fontSize:11}}>読み込み</button>
-                <button onClick={()=>delPre(p.id)} style={{...canBtn,padding:"4px 8px",fontSize:11,color:"#D9534F"}}>✕</button>
+        {showPresets && (
+          <div style={{ margin: "0 8px 6px", background: "#fff", borderRadius: 8, border: "1px solid #e0e0e0", overflow: "hidden" }}>
+            {presets.map(p => (
+              <div key={p.id} style={{ display: "flex", alignItems: "center", padding: "8px 12px", borderBottom: "1px solid #f0f0f0" }}>
+                <span style={{ flex: 1, fontSize: 14 }}>{p.name}</span>
+                <button onClick={() => startLoadPreset(p)} style={{ ...S.saveBtn, padding: "4px 10px", marginRight: 4, fontSize: 11 }}>読み込み</button>
+                <button onClick={() => deletePreset(p.id)} style={{ ...S.cancelBtn, padding: "4px 8px", fontSize: 11, color: "#D9534F" }}>✕</button>
               </div>
             ))}
-            {/* Save current */}
-            {tasks.length>0&&<div style={{padding:"8px 12px",borderTop:"1px solid #e0e0e0"}}>
-              <div style={{fontSize:11,color:"#888",marginBottom:4}}>現在のタスクを保存</div>
-              <div style={{display:"flex",gap:4}}>
-                <input value={preName} onChange={e=>setPreName(e.target.value)} placeholder="プリセット名"
-                  style={{...inpS,flex:1,fontSize:13,padding:"4px 8px"}}/>
-                <button onClick={savePre} disabled={!preName.trim()}
-                  style={{...savBtn,padding:"4px 10px",opacity:preName.trim()?1:0.4}}>保存</button>
+            {tasks.length > 0 && (
+              <div style={{ padding: "8px 12px", borderTop: "1px solid #e0e0e0" }}>
+                <div style={{ fontSize: 11, color: "#888", marginBottom: 4 }}>現在のタスクを保存</div>
+                <div style={{ display: "flex", gap: 4 }}>
+                  <input value={presetSaveName} onChange={e => setPresetSaveName(e.target.value)} placeholder="プリセット名" style={{ ...S.input, flex: 1, fontSize: 13, padding: "4px 8px" }} />
+                  <button onClick={savePreset} disabled={!presetSaveName.trim()} style={{ ...S.saveBtn, padding: "4px 10px", opacity: presetSaveName.trim() ? 1 : 0.4 }}>保存</button>
+                </div>
               </div>
-            </div>}
-            {/* Create new */}
-            <div style={{padding:"8px 12px",borderTop:"1px solid #e0e0e0",background:"#FAFAFA"}}>
-              <div style={{fontSize:11,color:"#888",marginBottom:4}}>新規作成（ゼロから組み立て）</div>
-              <div style={{display:"flex",gap:4}}>
-                <input value={newPreName} onChange={e=>setNewPreName(e.target.value)} placeholder="プリセット名"
-                  style={{...inpS,flex:1,fontSize:13,padding:"4px 8px"}}/>
-                <button onClick={()=>{if(newPreName.trim()){startPreEdit(newPreName.trim());setNewPreName("")}}} disabled={!newPreName.trim()}
-                  style={{...savBtn,padding:"4px 10px",background:"#5B3A8C",opacity:newPreName.trim()?1:0.4}}>作成</button>
+            )}
+            <div style={{ padding: "8px 12px", borderTop: "1px solid #e0e0e0", background: "#FAFAFA" }}>
+              <div style={{ fontSize: 11, color: "#888", marginBottom: 4 }}>新規作成（ゼロから組み立て）</div>
+              <div style={{ display: "flex", gap: 4 }}>
+                <input value={presetNewName} onChange={e => setPresetNewName(e.target.value)} placeholder="プリセット名" style={{ ...S.input, flex: 1, fontSize: 13, padding: "4px 8px" }} />
+                <button onClick={() => { if (presetNewName.trim()) { beginPresetEdit(presetNewName.trim()); setPresetNewName(""); } }} disabled={!presetNewName.trim()} style={{ ...S.saveBtn, padding: "4px 10px", background: "#5B3A8C", opacity: presetNewName.trim() ? 1 : 0.4 }}>作成</button>
               </div>
+            </div>
+            <div style={{ padding: "8px 12px", borderTop: "1px solid #e0e0e0", background: "#F5F5F5" }}>
+              <div style={{ fontSize: 11, color: "#888", marginBottom: 4 }}>データ管理</div>
+              <div style={{ display: "flex", gap: 4 }}>
+                <button onClick={exportData} style={{ ...S.saveBtn, padding: "4px 10px", flex: 1, background: "#555" }}>📤 書き出し</button>
+                <button onClick={() => { setShowImport(!showImport); setShowExport(false); }} style={{ ...S.saveBtn, padding: "4px 10px", flex: 1, background: "#555" }}>📥 復元</button>
+              </div>
+              {exportMsg && <div style={{ fontSize: 11, color: "#4A90D9", marginTop: 4, textAlign: "center" }}>{exportMsg}</div>}
+              {showExport && (
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ fontSize: 11, color: "#666", marginBottom: 2 }}>↓ 全選択してコピー、メモ帳等に保存</div>
+                  <textarea ref={exportAreaRef} value={exportText} readOnly onFocus={e => e.target.select()}
+                    style={{ width: "100%", height: 60, border: "1px solid #ddd", borderRadius: 5, padding: 6, fontSize: 10, resize: "none", background: "#fff" }} />
+                  <button onClick={() => setShowExport(false)} style={{ ...S.cancelBtn, padding: "4px 10px", marginTop: 4, fontSize: 11 }}>閉じる</button>
+                </div>
+              )}
+              {showImport && (
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ fontSize: 11, color: "#666", marginBottom: 2 }}>↓ 保存したデータを貼り付け</div>
+                  <textarea value={importText} onChange={e => setImportText(e.target.value)} placeholder="ここに貼り付け"
+                    style={{ width: "100%", height: 60, border: "1px solid #ddd", borderRadius: 5, padding: 6, fontSize: 10, resize: "none" }} />
+                  <button onClick={importData} disabled={!importText.trim()} style={{ ...S.saveBtn, padding: "4px 10px", marginTop: 4, opacity: importText.trim() ? 1 : 0.4 }}>復元する</button>
+                </div>
+              )}
             </div>
           </div>
         )}
       </div>}
 
-      {/* List */}
-      <div style={{padding:"2px 6px 120px"}}>
-        {movId&&<button onClick={()=>moveToTarget(null)} style={{width:"100%",padding:10,marginBottom:4,background:"#E8F4FD",border:"2px dashed #4A90D9",borderRadius:8,color:"#4A90D9",fontWeight:600,fontSize:13,cursor:"pointer",textAlign:"center"}}>↑ ルートへ移動</button>}
-        {pendPre&&<button onClick={()=>placePre(null)} style={{width:"100%",padding:10,marginBottom:4,background:"#F3E8FD",border:"2px dashed #7B4FB0",borderRadius:8,color:"#7B4FB0",fontWeight:600,fontSize:13,cursor:"pointer",textAlign:"center"}}>↑ ルートに追加</button>}
-        {items.length===0&&!movId&&(
-          <div style={{textAlign:"center",padding:30,color:"#999"}}>
-            <div style={{fontSize:14,marginBottom:12}}>この日のタスクはまだありません</div>
-            {presets.length>0&&<button onClick={()=>setShowPre("load")} style={{...savBtn,padding:"8px 20px",fontSize:13}}>📂 プリセットから読み込む</button>}
+      {/* ===== Task List ===== */}
+      <div style={{ padding: "2px 6px 120px" }}>
+        {/* Move/Place target: Root */}
+        {hasAction && <button onClick={() => movingId ? moveToTarget(null) : placePreset(null)}
+          style={{ width: "100%", padding: 10, marginBottom: 4, background: movingId ? "#E8F4FD" : "#F3E8FD", border: `2px dashed ${movingId ? "#4A90D9" : "#7B4FB0"}`, borderRadius: 8, color: movingId ? "#4A90D9" : "#7B4FB0", fontWeight: 600, fontSize: 13, cursor: "pointer", textAlign: "center" }}>
+          ↑ ルートに{movingId ? "移動" : "追加"}</button>}
+
+        {/* Empty state */}
+        {flatItems.length === 0 && !hasAction && (
+          <div style={{ textAlign: "center", padding: 30, color: "#999" }}>
+            <div style={{ fontSize: 14, marginBottom: 12 }}>この日のタスクはまだありません</div>
+            {presets.length > 0 && <button onClick={() => setShowPresets(true)} style={{ ...S.saveBtn, padding: "8px 20px", fontSize: 13 }}>📂 プリセットから読み込む</button>}
           </div>
         )}
-        {items.map(it=>{
-          const isEd=editing===it.id,isSwp=swiped===it.id,isMov=movId===it.id,canMov=isMovable(it.id);
-          const canPlace=!!pendPre;
-          const isCurrent=isToday&&!it.isItem&&it.start<=nowMin&&nowMin<it.end&&it.showT;
 
-          if(it.isItem){return(
-            <div key={it.id+"i"} style={{marginBottom:1,position:"relative",overflow:"hidden",borderRadius:4,...(isMov?{outline:"2px solid #4A90D9",outlineOffset:-2}:{})}}>
-              {mode==="view"&&!movId&&<div style={{position:"absolute",right:0,top:0,bottom:0,width:72,background:"#D9534F",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                <span onClick={e=>{e.stopPropagation();del(it.id)}} style={{color:"#fff",fontWeight:600,fontSize:13,padding:"8px 16px",cursor:"pointer"}}>削除</span></div>}
-              <div onTouchStart={mode==="view"&&!movId?e=>onTS(e,it.id):undefined} onTouchMove={mode==="view"&&!movId?e=>onTM(e,it.id):undefined}
-                onClick={mode==="view"&&isSwp?()=>setSwiped(null):(movId&&canMov?()=>moveToTarget(it.id):(canPlace?()=>placePre(it.id):undefined))}
-                style={{display:"flex",alignItems:"center",background:isMov?"#E8F4FD":"#fff",position:"relative",zIndex:1,transition:"transform 0.2s ease",transform:isSwp?"translateX(-72px)":"translateX(0)",paddingLeft:it.depth*5+4,borderLeft:"2px solid #e8e8e8"}}>
-                <div style={{width:it.depth*5,flexShrink:0}}/>
-                <div style={{flex:1,padding:"6px 10px",opacity:it.chk?0.4:1}} onClick={mode==="view"&&!isSwp&&!movId?()=>toggle(it.id):undefined}>
-                  {isEd?(<div style={{display:"flex",gap:6,alignItems:"center"}}>
-                    <input value={eName} onChange={e=>setEName(e.target.value)} autoFocus style={{...inpS,flex:1}}/>
-                    <button onClick={saveEd} style={savBtn}>保存</button><button onClick={()=>setEditing(null)} style={canBtn}>取消</button></div>)
-                  :(<div style={{display:"flex",alignItems:"center",gap:6}}>
-                    {mode==="view"&&!movId&&<span style={{width:16,height:16,borderRadius:8,flexShrink:0,display:"inline-flex",alignItems:"center",justifyContent:"center",border:it.chk?"none":"1.5px solid #ccc",background:it.chk?"#aaa":"transparent",color:"#fff",fontSize:9}}>{it.chk&&"✓"}</span>}
-                    <span style={{fontSize:13,color:"#666",textDecoration:it.chk?"line-through":"none"}}>{it.name}</span>
-                    {(movId&&canMov||canPlace)&&<span style={{marginLeft:"auto",fontSize:11,color:pendPre?"#7B4FB0":"#4A90D9",fontWeight:600}}>← ここへ</span>}
-                  </div>)}
+        {flatItems.map(it => {
+          const isEd = editing === it.id;
+          const isSwp = swiped === it.id;
+          const isMov = movingId === it.id;
+          const canMov = canMoveTo(it.id);
+          const canPlace = !!pendingPreset;
+          const isCurrent = isToday && !it.isItem && it.start <= nowMinutes && nowMinutes < it.end && it.showTime;
+          const swipeEnabled = mode === "view" && !hasAction;
+          const clickTarget = hasAction ? (canMov ? () => moveToTarget(it.id) : canPlace ? () => placePreset(it.id) : undefined) : undefined;
+
+          /* --- Item Row --- */
+          if (it.isItem) return (
+            <div key={it.id + "i"} style={{ marginBottom: 1, position: "relative", overflow: "hidden", borderRadius: 4, ...(isMov ? { outline: "2px solid #4A90D9", outlineOffset: -2 } : {}) }}>
+              {swipeEnabled && <div style={S.swipeDelete}><span onClick={e => { e.stopPropagation(); deleteTask(it.id); }} style={S.swipeDeleteText}>削除</span></div>}
+              <div
+                onTouchStart={swipeEnabled ? e => onTouchStart(e, it.id) : undefined}
+                onTouchMove={swipeEnabled ? e => onTouchMove(e, it.id) : undefined}
+                onClick={isSwp ? () => setSwiped(null) : clickTarget}
+                style={{ display: "flex", alignItems: "center", background: isMov ? "#E8F4FD" : "#fff", position: "relative", zIndex: 1,
+                  transition: "transform 0.2s ease", transform: isSwp ? "translateX(-72px)" : "translateX(0)",
+                  paddingLeft: it.depth * 5 + 4, borderLeft: "2px solid #e8e8e8" }}>
+                <div style={{ width: it.depth * 5, flexShrink: 0 }} />
+                <div style={{ flex: 1, padding: "6px 10px", opacity: it.checked ? 0.4 : 1 }}
+                  onClick={mode === "view" && !isSwp && !hasAction ? () => toggleCheck(it.id) : undefined}>
+                  {isEd ? (
+                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                      <input value={editName} onChange={e => setEditName(e.target.value)} autoFocus style={{ ...S.input, flex: 1 }} />
+                      <button onClick={saveEdit} style={S.saveBtn}>保存</button>
+                      <button onClick={() => setEditing(null)} style={S.cancelBtn}>取消</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      {mode === "view" && !hasAction && <span style={{ width: 16, height: 16, borderRadius: 8, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center", border: it.checked ? "none" : "1.5px solid #ccc", background: it.checked ? "#aaa" : "transparent", color: "#fff", fontSize: 9 }}>{it.checked && "✓"}</span>}
+                      <span style={{ fontSize: 13, color: "#666", textDecoration: it.checked ? "line-through" : "none" }}>{it.name}</span>
+                      {hasAction && (canMov || canPlace) && <span style={{ marginLeft: "auto", fontSize: 11, color: pendingPreset ? "#7B4FB0" : "#4A90D9", fontWeight: 600 }}>← ここへ</span>}
+                    </div>
+                  )}
                 </div>
-                {mode==="edit"&&!isEd&&!movId&&<div style={{display:"flex",alignItems:"center",gap:1,paddingRight:2,flexShrink:0}}>
-                  <button onClick={()=>startEd(it.id)} style={eBtn}>✎</button>
-                  <button onClick={()=>setMovId(it.id)} style={{...eBtn,color:"#4A90D9"}}>⇄</button>
-                  <button onClick={e=>{e.stopPropagation();del(it.id)}} style={{...eBtn,color:"#D9534F"}}>✕</button></div>}
+                {mode === "edit" && !isEd && !movingId && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 1, paddingRight: 2, flexShrink: 0 }}>
+                    <button onClick={() => beginEdit(it.id)} style={S.editBtn}>✎</button>
+                    <button onClick={() => setMovingId(it.id)} style={{ ...S.editBtn, color: "#4A90D9" }}>⇄</button>
+                    <button onClick={e => { e.stopPropagation(); deleteTask(it.id); }} style={{ ...S.editBtn, color: "#D9534F" }}>✕</button>
+                  </div>
+                )}
               </div>
-            </div>);
-          }
+            </div>
+          );
 
-          return(
-            <div key={it.id+it.depth} style={{marginBottom:1,position:"relative",overflow:"hidden",borderRadius:6,...(isMov?{outline:"2px solid #4A90D9",outlineOffset:-2}:{})}}>
-              {mode==="view"&&!movId&&<div style={{position:"absolute",right:0,top:0,bottom:0,width:72,background:"#D9534F",display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"0 6px 6px 0"}}>
-                <span onClick={e=>{e.stopPropagation();del(it.id)}} style={{color:"#fff",fontWeight:600,fontSize:13,padding:"8px 16px",cursor:"pointer"}}>削除</span></div>}
-              <div onTouchStart={mode==="view"&&!movId?e=>onTS(e,it.id):undefined} onTouchMove={mode==="view"&&!movId?e=>onTM(e,it.id):undefined}
-                onClick={mode==="view"&&isSwp?()=>setSwiped(null):(movId&&canMov?()=>moveToTarget(it.id):(canPlace?()=>placePre(it.id):undefined))}
-                style={{display:"flex",alignItems:"stretch",background:isMov?"#E8F4FD":isCurrent?"#FFFDE7":(it.ad&&!it.grp?"#f4faf4":"#fff"),
-                  position:"relative",zIndex:1,transition:"transform 0.2s ease",transform:isSwp?"translateX(-72px)":"translateX(0)",
-                  ...(isCurrent?{boxShadow:"inset 3px 0 0 #E8C547"}:{})}}>
-                <div style={{display:"flex",flexShrink:0}}>{it.colors.map((c,i)=><div key={i} style={{width:5,background:c,opacity:it.ad?0.3:0.85}}/>)}</div>
-                <div style={{flex:1,padding:"9px 10px",minWidth:0,opacity:it.ad?0.4:1}}
-                  onClick={mode==="view"&&!isSwp&&!movId?(it.grp?()=>togCol(it.id):()=>toggle(it.id)):undefined}>
-                  {isEd?(<div style={{display:"flex",flexDirection:"column",gap:6}}>
-                    <input value={eName} onChange={e=>setEName(e.target.value)} autoFocus style={inpS}/>
-                    {!it.grp&&!it.isItem&&<div style={{display:"flex",alignItems:"center",gap:4}}>
-                      <input value={eDur} onChange={e=>setEDur(e.target.value)} type="number" min="1" style={{...inpS,width:60}}/>
-                      <span style={{fontSize:12,color:"#888"}}>分</span></div>}
-                    <div style={{display:"flex",gap:6}}><button onClick={saveEd} style={savBtn}>保存</button><button onClick={()=>setEditing(null)} style={canBtn}>取消</button></div></div>)
-                  :(<div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{display:"flex",alignItems:"center",gap:5}}>
-                        {mode==="view"&&!it.grp&&!movId&&<span style={{width:18,height:18,borderRadius:4,flexShrink:0,display:"inline-flex",alignItems:"center",justifyContent:"center",border:(it.chk||it.ad)?"none":"2px solid #ccc",background:(it.chk||it.ad)?dc(it.depth):"transparent",color:"#fff",fontSize:11}}>{(it.chk||it.ad)&&"✓"}</span>}
-                        {it.grp&&!movId&&<span onClick={e=>{e.stopPropagation();togCol(it.id)}} style={{fontSize:10,color:dc(it.depth),cursor:"pointer",flexShrink:0,userSelect:"none"}}>{it.col?"▶":"▼"}</span>}
-                        <span style={{fontSize:14,fontWeight:it.grp?700:400,color:it.grp?dc(it.depth):"#1a1a2e",textDecoration:it.ad&&!it.grp?"line-through":"none"}}>{it.name}</span>
-                        {it.hik&&!it.grp&&<span style={{fontSize:10,color:"#bbb",marginLeft:2}}>📋</span>}
-                        {isCurrent&&<span style={{fontSize:9,background:"#E8C547",color:"#333",padding:"1px 5px",borderRadius:3,marginLeft:4,fontWeight:600}}>NOW</span>}
+          /* --- Task Row --- */
+          return (
+            <div key={it.id + it.depth} style={{ marginBottom: 1, position: "relative", overflow: "hidden", borderRadius: 6, ...(isMov ? { outline: "2px solid #4A90D9", outlineOffset: -2 } : {}) }}>
+              {swipeEnabled && <div style={{ ...S.swipeDelete, borderRadius: "0 6px 6px 0" }}><span onClick={e => { e.stopPropagation(); deleteTask(it.id); }} style={S.swipeDeleteText}>削除</span></div>}
+              <div
+                onTouchStart={swipeEnabled ? e => onTouchStart(e, it.id) : undefined}
+                onTouchMove={swipeEnabled ? e => onTouchMove(e, it.id) : undefined}
+                onClick={isSwp ? () => setSwiped(null) : clickTarget}
+                style={{ display: "flex", alignItems: "stretch",
+                  background: isMov ? "#E8F4FD" : isCurrent ? "#FFFDE7" : (it.allDone && !it.isGroup ? "#f4faf4" : "#fff"),
+                  position: "relative", zIndex: 1, transition: "transform 0.2s ease", transform: isSwp ? "translateX(-72px)" : "translateX(0)",
+                  ...(isCurrent ? { boxShadow: "inset 3px 0 0 #E8C547" } : {}) }}>
+                {/* Color bars */}
+                <div style={{ display: "flex", flexShrink: 0 }}>{it.colors.map((c, i) => <div key={i} style={{ width: 5, background: c, opacity: it.allDone ? 0.3 : 0.85 }} />)}</div>
+                {/* Content */}
+                <div style={{ flex: 1, padding: "9px 10px", minWidth: 0, opacity: it.allDone ? 0.4 : 1 }}
+                  onClick={mode === "view" && !isSwp && !hasAction ? (it.isGroup ? () => toggleCollapse(it.id) : () => toggleCheck(it.id)) : undefined}>
+                  {isEd ? (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <input value={editName} onChange={e => setEditName(e.target.value)} autoFocus style={S.input} />
+                      {!it.isGroup && !it.isItem && <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <input value={editDur} onChange={e => setEditDur(e.target.value)} type="number" min="1" style={{ ...S.input, width: 60 }} />
+                        <span style={{ fontSize: 12, color: "#888" }}>分</span></div>}
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button onClick={saveEdit} style={S.saveBtn}>保存</button>
+                        <button onClick={() => setEditing(null)} style={S.cancelBtn}>取消</button>
                       </div>
-                      <div style={{fontSize:11,color:"#aaa",marginTop:1,paddingLeft:mode==="view"&&!it.grp&&!movId?23:it.grp?15:0}}>
-                        {fmtD(it.dur)}{it.grp&&` (${it.dn}/${it.tt})`}</div>
                     </div>
-                    <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      {(movId&&canMov||canPlace)&&<span style={{fontSize:11,color:pendPre?"#7B4FB0":"#4A90D9",fontWeight:600,whiteSpace:"nowrap"}}>← ここへ</span>}
-                      {it.showT&&!movId&&<div style={{textAlign:"right",flexShrink:0}}>
-                        <div style={{fontSize:15,fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{toTime(it.start)}</div>
-                        <div style={{fontSize:10,color:"#aaa",fontVariantNumeric:"tabular-nums"}}>〜{toTime(it.end)}</div></div>}
+                  ) : (
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                          {mode === "view" && !it.isGroup && !hasAction && (
+                            <span style={{ width: 18, height: 18, borderRadius: 4, flexShrink: 0, display: "inline-flex", alignItems: "center", justifyContent: "center",
+                              border: (it.checked || it.allDone) ? "none" : "2px solid #ccc", background: (it.checked || it.allDone) ? depthColor(it.depth) : "transparent", color: "#fff", fontSize: 11 }}>
+                              {(it.checked || it.allDone) && "✓"}</span>)}
+                          {it.isGroup && !hasAction && <span onClick={e => { e.stopPropagation(); toggleCollapse(it.id); }} style={{ fontSize: 10, color: depthColor(it.depth), cursor: "pointer", flexShrink: 0, userSelect: "none" }}>{it.collapsed ? "▶" : "▼"}</span>}
+                          <span style={{ fontSize: 14, fontWeight: it.isGroup ? 700 : 400, color: it.isGroup ? depthColor(it.depth) : "#1a1a2e", textDecoration: it.allDone && !it.isGroup ? "line-through" : "none" }}>{it.name}</span>
+                          {it.hasItemKids && !it.isGroup && <span style={{ fontSize: 10, color: "#bbb", marginLeft: 2 }}>📋</span>}
+                          {isCurrent && <span style={{ fontSize: 9, background: "#E8C547", color: "#333", padding: "1px 5px", borderRadius: 3, marginLeft: 4, fontWeight: 600 }}>NOW</span>}
+                        </div>
+                        <div style={{ fontSize: 11, color: "#aaa", marginTop: 1, paddingLeft: mode === "view" && !it.isGroup && !hasAction ? 23 : it.isGroup ? 15 : 0 }}>
+                          {formatDuration(it.dur)}{it.isGroup && ` (${it.doneCount}/${it.totalCount})`}</div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        {hasAction && (canMov || canPlace) && <span style={{ fontSize: 11, color: pendingPreset ? "#7B4FB0" : "#4A90D9", fontWeight: 600, whiteSpace: "nowrap" }}>← ここへ</span>}
+                        {it.showTime && !hasAction && <div style={{ textAlign: "right", flexShrink: 0 }}>
+                          <div style={{ fontSize: 15, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{toTimeStr(it.start)}</div>
+                          <div style={{ fontSize: 10, color: "#aaa", fontVariantNumeric: "tabular-nums" }}>〜{toTimeStr(it.end)}</div></div>}
+                      </div>
                     </div>
-                  </div>)}
+                  )}
                 </div>
-                {mode==="edit"&&!isEd&&!movId&&<div style={{display:"flex",alignItems:"center",gap:1,paddingRight:2,flexShrink:0}}>
-                  <button onClick={()=>startEd(it.id)} style={eBtn}>✎</button>
-                  <button onClick={()=>setMovId(it.id)} style={{...eBtn,color:"#4A90D9"}}>⇄</button>
-                  <button onClick={()=>{setAddTgt(addTgt===it.id?null:it.id);setNName("");setNDur("30");setNIsItem(false)}} style={{...eBtn,color:"#6BBF6A",fontWeight:700}}>+</button>
-                  <button onClick={e=>{e.stopPropagation();del(it.id)}} style={{...eBtn,color:"#D9534F"}}>✕</button></div>}
+                {/* Edit buttons */}
+                {mode === "edit" && !isEd && !movingId && (
+                  <div style={{ display: "flex", alignItems: "center", gap: 1, paddingRight: 2, flexShrink: 0 }}>
+                    <button onClick={() => beginEdit(it.id)} style={S.editBtn}>✎</button>
+                    <button onClick={() => setMovingId(it.id)} style={{ ...S.editBtn, color: "#4A90D9" }}>⇄</button>
+                    <button onClick={() => { setAddTarget(addTarget === it.id ? null : it.id); setNewName(""); setNewDur("30"); setNewIsItem(false); }} style={{ ...S.editBtn, color: "#6BBF6A", fontWeight: 700 }}>+</button>
+                    <button onClick={e => { e.stopPropagation(); deleteTask(it.id); }} style={{ ...S.editBtn, color: "#D9534F" }}>✕</button>
+                  </div>
+                )}
               </div>
-              {addTgt===it.id&&!movId&&addForm(it.id,it.depth)}
-            </div>);
+              {addTarget === it.id && !movingId && renderAddForm(it.id, it.depth)}
+            </div>
+          );
         })}
       </div>
 
-      {movId&&movTask&&<div style={{position:"fixed",bottom:0,left:0,right:0,background:"#2C3E50",color:"#fff",padding:"12px 16px",zIndex:20,boxShadow:"0 -2px 12px rgba(0,0,0,0.2)"}}>
-        <div style={{fontSize:12,opacity:0.7,marginBottom:8}}>「{movTask.name}」を移動中</div>
-        <div style={{display:"flex",gap:8,justifyContent:"center"}}>
-          <button onClick={()=>mv(movId,-1)} style={panBtn}>↑ 上へ</button>
-          <button onClick={()=>mv(movId,1)} style={panBtn}>↓ 下へ</button>
-          <button onClick={()=>setMovId(null)} style={{...panBtn,background:"rgba(255,255,255,0.15)"}}>取消</button></div></div>}
+      {/* ===== Move / Place Panel ===== */}
+      {hasAction && (
+        <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: actionColor, color: "#fff", padding: "12px 16px", zIndex: 20, boxShadow: "0 -2px 12px rgba(0,0,0,0.2)" }}>
+          <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 8 }}>{actionLabel}</div>
+          <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+            {movingId && <>
+              <button onClick={() => moveInList(movingId, -1)} style={S.panelBtn}>↑ 上へ</button>
+              <button onClick={() => moveInList(movingId, 1)} style={S.panelBtn}>↓ 下へ</button>
+            </>}
+            <button onClick={() => { setMovingId(null); setPendingPreset(null); }} style={{ ...S.panelBtn, background: "rgba(255,255,255,0.15)" }}>取消</button>
+          </div>
+        </div>
+      )}
 
-      {pendPre&&<div style={{position:"fixed",bottom:0,left:0,right:0,background:"#5B3A8C",color:"#fff",padding:"12px 16px",zIndex:20,boxShadow:"0 -2px 12px rgba(0,0,0,0.2)"}}>
-        <div style={{fontSize:12,opacity:0.7,marginBottom:8}}>「{pendPre.name}」の配置先を選択</div>
-        <div style={{display:"flex",gap:8,justifyContent:"center"}}>
-          <button onClick={()=>setPendPre(null)} style={{...panBtn,background:"rgba(255,255,255,0.15)"}}>取消</button></div></div>}
-
-      {mode==="edit"&&editing===null&&!movId&&!pendPre&&(
-        <div style={{position:"fixed",bottom:16,left:0,right:0,display:"flex",justifyContent:"center",zIndex:10}}>
-          {addTgt==="__root__"?addForm("__root__",-1)
-          :addTgt===null?(<button onClick={()=>{setAddTgt("__root__");setNName("");setNDur("30");setNIsItem(false)}}
-            style={{background:"#2C3E50",color:"#fff",border:"none",borderRadius:14,padding:"12px 24px",fontSize:14,fontWeight:700,cursor:"pointer",boxShadow:"0 3px 12px rgba(44,62,80,0.35)"}}>
-            ＋ タスクを追加</button>):null}
-        </div>)}
-    </div>);
+      {/* ===== FAB ===== */}
+      {mode === "edit" && editing === null && !movingId && !pendingPreset && (
+        <div style={{ position: "fixed", bottom: 16, left: 0, right: 0, display: "flex", justifyContent: "center", zIndex: 10 }}>
+          {addTarget === "__root__" ? renderAddForm("__root__", -1)
+          : addTarget === null ? (
+            <button onClick={() => { setAddTarget("__root__"); setNewName(""); setNewDur("30"); setNewIsItem(false); }}
+              style={{ background: "#2C3E50", color: "#fff", border: "none", borderRadius: 14, padding: "12px 24px", fontSize: 14, fontWeight: 700, cursor: "pointer", boxShadow: "0 3px 12px rgba(44,62,80,0.35)" }}>
+              ＋ タスクを追加</button>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
 }
 
-const loadS={display:"flex",justifyContent:"center",alignItems:"center",height:"100vh",fontFamily:"system-ui",color:"#4A90D9"};
-const hdrBtn={background:"rgba(255,255,255,0.13)",color:"#fff",border:"none",borderRadius:7,padding:"6px 12px",fontSize:12,fontWeight:600,cursor:"pointer"};
-const navBtn={background:"rgba(255,255,255,0.1)",color:"#fff",border:"none",borderRadius:6,padding:"4px 8px",fontSize:14,cursor:"pointer"};
-const urBtn={background:"none",border:"1px solid rgba(255,255,255,0.25)",borderRadius:6,padding:"5px 8px",fontSize:16,color:"#fff",cursor:"pointer",lineHeight:1};
-const inpS={border:"1px solid #ddd",borderRadius:5,padding:"5px 7px",fontSize:16};
-const savBtn={background:"#2C3E50",color:"#fff",border:"none",borderRadius:5,padding:"5px 12px",fontSize:12,fontWeight:600,cursor:"pointer"};
-const canBtn={background:"#eee",border:"none",borderRadius:5,padding:"5px 12px",fontSize:12,cursor:"pointer"};
-const eBtn={background:"none",border:"none",padding:"4px 8px",fontSize:14,cursor:"pointer",color:"#2C3E50"};
-const panBtn={background:"#4A90D9",color:"#fff",border:"none",borderRadius:8,padding:"10px 18px",fontSize:14,fontWeight:600,cursor:"pointer"};
-const preBtn={background:"#fff",border:"1px solid #ddd",borderRadius:6,padding:"4px 10px",fontSize:12,color:"#555",cursor:"pointer"};
+/* ===== Shared Styles ===== */
+const S = {
+  headerBtn:  { background: "rgba(255,255,255,0.13)", color: "#fff", border: "none", borderRadius: 7, padding: "6px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" },
+  navBtn:     { background: "rgba(255,255,255,0.1)", color: "#fff", border: "none", borderRadius: 6, padding: "4px 8px", fontSize: 14, cursor: "pointer" },
+  undoBtn:    { background: "none", border: "1px solid rgba(255,255,255,0.25)", borderRadius: 6, padding: "5px 8px", fontSize: 16, color: "#fff", cursor: "pointer", lineHeight: 1 },
+  timeInput:  { background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", borderRadius: 7, padding: "6px 10px", color: "#fff", fontSize: 18, fontWeight: 700, fontVariantNumeric: "tabular-nums", outline: "none" },
+  input:      { border: "1px solid #ddd", borderRadius: 5, padding: "5px 7px", fontSize: 16 },
+  saveBtn:    { background: "#2C3E50", color: "#fff", border: "none", borderRadius: 5, padding: "5px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer" },
+  cancelBtn:  { background: "#eee", border: "none", borderRadius: 5, padding: "5px 12px", fontSize: 12, cursor: "pointer" },
+  editBtn:    { background: "none", border: "none", padding: "4px 8px", fontSize: 14, cursor: "pointer", color: "#2C3E50" },
+  panelBtn:   { background: "#4A90D9", color: "#fff", border: "none", borderRadius: 8, padding: "10px 18px", fontSize: 14, fontWeight: 600, cursor: "pointer" },
+  presetBtn:  { background: "#fff", border: "1px solid #ddd", borderRadius: 6, padding: "4px 10px", fontSize: 12, color: "#555", cursor: "pointer" },
+  swipeDelete:     { position: "absolute", right: 0, top: 0, bottom: 0, width: 72, background: "#D9534F", display: "flex", alignItems: "center", justifyContent: "center" },
+  swipeDeleteText: { color: "#fff", fontWeight: 600, fontSize: 13, padding: "8px 16px", cursor: "pointer" },
+};
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
 </body>
 </html>
