@@ -487,7 +487,7 @@ function App() {
       </div>
 
       {/* ===== Preset Panel ===== */}
-      {!presetEditing && <div>
+      <div>
         <div style={{ display: "flex", gap: 6, padding: "6px 8px" }}>
           <button onClick={() => setShowPresets(!showPresets)} style={{ ...S.presetBtn, ...(showPresets ? { background: "#2C3E50", color: "#fff", borderColor: "#2C3E50" } : {}) }}>📂 プリセット</button>
         </div>
@@ -497,10 +497,10 @@ function App() {
               <div key={p.id} style={{ display: "flex", alignItems: "center", padding: "8px 12px", borderBottom: "1px solid #f0f0f0" }}>
                 <span style={{ flex: 1, fontSize: 14 }}>{p.name}</span>
                 <button onClick={() => startLoadPreset(p)} style={{ ...S.saveBtn, padding: "4px 10px", marginRight: 4, fontSize: 11 }}>読み込み</button>
-                <button onClick={() => deletePreset(p.id)} style={{ ...S.cancelBtn, padding: "4px 8px", fontSize: 11, color: "#D9534F" }}>✕</button>
+                {!presetEditing && <button onClick={() => deletePreset(p.id)} style={{ ...S.cancelBtn, padding: "4px 8px", fontSize: 11, color: "#D9534F" }}>✕</button>}
               </div>
             ))}
-            {tasks.length > 0 && (
+            {!presetEditing && tasks.length > 0 && (
               <div style={{ padding: "8px 12px", borderTop: "1px solid #e0e0e0" }}>
                 <div style={{ fontSize: 11, color: "#888", marginBottom: 4 }}>現在のタスクを保存</div>
                 <div style={{ display: "flex", gap: 4 }}>
@@ -509,13 +509,16 @@ function App() {
                 </div>
               </div>
             )}
-            <div style={{ padding: "8px 12px", borderTop: "1px solid #e0e0e0", background: "#FAFAFA" }}>
-              <div style={{ fontSize: 11, color: "#888", marginBottom: 4 }}>新規作成（ゼロから組み立て）</div>
-              <div style={{ display: "flex", gap: 4 }}>
-                <input value={presetNewName} onChange={e => setPresetNewName(e.target.value)} placeholder="プリセット名" style={{ ...S.input, flex: 1, fontSize: 13, padding: "4px 8px" }} />
-                <button onClick={() => { if (presetNewName.trim()) { beginPresetEdit(presetNewName.trim()); setPresetNewName(""); } }} disabled={!presetNewName.trim()} style={{ ...S.saveBtn, padding: "4px 10px", background: "#5B3A8C", opacity: presetNewName.trim() ? 1 : 0.4 }}>作成</button>
+            {!presetEditing && (
+              <div style={{ padding: "8px 12px", borderTop: "1px solid #e0e0e0", background: "#FAFAFA" }}>
+                <div style={{ fontSize: 11, color: "#888", marginBottom: 4 }}>新規作成（ゼロから組み立て）</div>
+                <div style={{ display: "flex", gap: 4 }}>
+                  <input value={presetNewName} onChange={e => setPresetNewName(e.target.value)} placeholder="プリセット名" style={{ ...S.input, flex: 1, fontSize: 13, padding: "4px 8px" }} />
+                  <button onClick={() => { if (presetNewName.trim()) { beginPresetEdit(presetNewName.trim()); setPresetNewName(""); } }} disabled={!presetNewName.trim()} style={{ ...S.saveBtn, padding: "4px 10px", background: "#5B3A8C", opacity: presetNewName.trim() ? 1 : 0.4 }}>作成</button>
+                </div>
               </div>
-            </div>
+            )}
+            {!presetEditing && (
             <div style={{ padding: "8px 12px", borderTop: "1px solid #e0e0e0", background: "#F5F5F5" }}>
               <div style={{ fontSize: 11, color: "#888", marginBottom: 4 }}>データ管理</div>
               <div style={{ display: "flex", gap: 4 }}>
@@ -540,9 +543,10 @@ function App() {
                 </div>
               )}
             </div>
+            )}
           </div>
         )}
-      </div>}
+      </div>
 
       {/* ===== Task List ===== */}
       <div style={{ padding: "2px 6px 120px" }}>
